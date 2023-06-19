@@ -1,0 +1,111 @@
+---
+- name: Configure NGINX for Taiga
+  hosts: front
+  become: yes
+  become_user: root
+  tasks:
+    - name: Remove default NGINX config file
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Create logs folder
+      file:
+        path: /home/logs
+        state: directory
+
+    - name: Create taiga.conf file
+      copy:
+        content: |
+          server {
+              listen 80 ssl;
+              server_name taiga.mycompany.com;
+              return 301 https://$server_name$request_uri;
+                  ssl_certificate     /tmp/mytrap.crt;
+                  ssl_certificate_key /tmp/mytrap.key;
+
+          }
+
+          server {
+              listen 443 ssl;
+              server_name taiga.mycompany.com;
+              server_tokens off;
+              
+              ssl_certificate     /tmp/mytrap.crt;
+              ssl_certificate_key /tmp/mytrap.key;
+              ssl_protocols       TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
+              ssl_ciphers         HIGH:!aNULL:!MD5;
+              ssl_session_cache    shared:SSL:10m;  # ~ 40,000 sessions
+              ssl_session_timeout  20m;
+              ssl_prefer_server_ciphers on;
+              
+              large_client_header_buffers 4 32k;
+              client_max_body_size 50M;
+              charset utf-8;
+
+              access_log /home/taiga/logs/nginx.access.log;
+              error_log /home/taiga/logs/nginx.error.log;
+
+              location / {
+                  alias /home/taiga-front-dist/dist/;
+                  index index.html;
+                  try_files $uri $uri/ index.html =404;
+              }
+
+              location /api/ {
+                  proxy_set_header Host $http_host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Scheme $scheme;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_pass http://192.168.1.11:8001/api/;
+                  proxy_redirect off;
+              }
+
+              location /admin/ {
+                  proxy_set_header Host $http_host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Scheme $scheme;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_pass http://192.168.1.11:8001/admin/;
+                  proxy_redirect off;
+              }
+
+              location /static/ {
+                  alias /home/taiga/taiga-back/static/;
+              }
+
+              location /_protected/ {
+                  internal;
+                  alias /home/taiga/taiga-back/media/;
+                  add_header Content-disposition "attachment";
+              }
+
+              location /media/exports/ {
+                  alias /home/taiga/taiga-back/media/exports/;
+                  add_header Content-disposition "attachment";
+              }
+
+              location /media/ {
+                  proxy_set_header Host $http_host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Scheme $scheme;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_pass http://192.168.1.11:8003/;
+                  proxy_redirect off;
+              }
+
+              location /events {
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  proxy_connect_timeout 7d;
+                  proxy_send_timeout 7d;
+                  proxy_read_timeout 7d;
+                  proxy_pass http://192.168.1.11:8888/events;
+              }
+          }
+        dest: /etc/nginx/conf.d/taiga.conf
+

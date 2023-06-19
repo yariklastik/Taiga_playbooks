@@ -1,0 +1,22 @@
+[backend]
+linux1 ansible_host=192.168.1.11 ansible_user=vagrant ansible_ssh_private_key_file=/home/lastikbarsik/.ssh/id_rsa http_host=mydomain.local http_conf=mydomain.local.conf
+
+[front]
+linux2 ansible_host=192.168.1.12 ansible_user=vagrant ansible_ssh_private_key_file=/home/lastikbarsik/.ssh/id_rsa http_host=mydomain.local http_conf=mydomain.local.conf
+
+
+[database_server]
+linux3 ansible_host=192.168.1.13 ansible_user=vagrant ansible_ssh_private_key_file=/home/lastikbarsik/.ssh/id_rsa
+
+
+[backend:vars]
+ansible_python_interpreter=/usr/bin/python3
+http_port=80
+
+[database_server:vars]
+ansible_python_interpreter=/usr/bin/python3
+http_port=80
+
+[front:vars]
+http_port=80
+

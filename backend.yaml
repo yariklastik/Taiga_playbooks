@@ -1,0 +1,215 @@
+---
+- name: Backend Setup
+  hosts: backend
+  become: true
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required system packages
+      apt:
+        name:
+          - build-essential
+          - binutils-doc
+          - autoconf
+          - flex
+          - bison
+          - libjpeg-dev
+          - libfreetype6-dev
+          - zlib1g-dev
+          - libzmq3-dev
+          - libgdbm-dev
+          - libncurses5-dev
+          - automake
+          - libtool
+          - curl
+          - git
+          - tmux
+          - gettext
+          - rabbitmq-server
+          - python3
+          - python3-pip
+          - python3-dev
+          - python3-venv
+          - libxml2-dev
+          - libxslt-dev
+          - libssl-dev
+          - libffi-dev
+          - nodejs
+        state: present
+        
+    - name: Create taiga user
+      user:
+        name: taiga
+        shell: /bin/bash
+        create_home: yes
+        
+    - name: Create the file repository configuration
+      lineinfile:
+        dest: /etc/apt/sources.list.d/pgdg.list
+        line: 'deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main'
+        create: yes
+
+    - name: Import the repository signing key
+      apt_key:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        state: present
+    
+    - name: Install PostgreSQL
+      apt:
+        name: postgresql-12
+        state: latest
+        update_cache: yes
+
+    - name: Запустити кластер PostgreSQL 12
+      become: true
+      command: pg_ctlcluster 12 main start
+
+
+    - name: Get the code
+      shell: |
+        cd ~taiga
+        git clone https://github.com/kaleidos-ventures/taiga-back.git taiga-back
+        cd taiga-back
+        git checkout stable
+      become: true
+      become_user: taiga
+      
+    - name: Install Python dependencies
+      become: true
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - libpq-dev
+        - python3-dev
+
+    - name: Create a virtualenv
+      shell: |
+        cd ~taiga/taiga-back
+        python3 -m venv .venv --prompt taiga-back
+        source .venv/bin/activate
+        pip install --upgrade pip wheel
+      become: true
+      become_user: taiga
+      
+    - name: Оновіть pip
+      become: yes
+      become_user: taiga
+      command: /home/taiga/taiga-back/.venv/bin/pip install --upgrade pip
+
+    - name: Оновіть setuptools
+      become: yes
+      become_user: taiga
+      command: /home/taiga/taiga-back/.venv/bin/pip install --upgrade setuptools
+      
+    - name: Встановіть psycopg2-binary
+      become: yes
+      become_user: taiga
+      command: /home/taiga/taiga-back/.venv/bin/pip install psycopg2-binary
+
+    - name: Install Python dependencies
+      pip:
+        requirements: requirements.txt
+        virtualenv: ~taiga/taiga-back/.venv
+      args:
+        chdir: ~taiga/taiga-back
+      become: true
+      become_user: taiga
+      
+    - name: Add RabbitMQ user and vhost
+      become: true
+      shell: |
+        sudo rabbitmqctl add_user rabbitmquser rabbitmqpassword &&
+        sudo rabbitmqctl add_vhost taiga &&
+        sudo rabbitmqctl set_permissions -p taiga rabbitmquser ".*" ".*" ".*"
+
+
+
+    - name: Install taiga-contrib-protected
+      pip:
+        name: git+https://github.com/kaleidos-ventures/taiga-contrib-protected.git@stable#egg=taiga-contrib-protected
+        virtualenv: ~taiga/taiga-back/.venv
+      become: true
+      become_user: taiga
+
+    - name: Create a settings file
+      shell: |
+        cd ~taiga/taiga-back
+        cp settings/config.py.prod.example settings/config.py
+      become: true
+      become_user: taiga
+
+    - name: Configure settings file
+      lineinfile:
+        path: ~taiga/taiga-back/settings/config.py
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      with_items:
+        - { regexp: "^SECRET_KEY =", line: "SECRET_KEY = '123'" }
+        - { regexp: "^        'PASSWORD': 'changeme'", line: "        'PASSWORD': '123'," }
+        - { regexp: "^        'HOST': ''", line: "        'HOST': '192.168.1.13'," }
+        - { regexp: "^        'PORT': ''", line: "        'PORT': '5432'," }
+      become: true
+      become_user: taiga
+      
+    - name: Change ownership and permissions of media directory
+      become: true
+      file:
+        path: /home/taiga/taiga-back
+        state: directory
+        owner: taiga
+        group: taiga
+        mode: "777"
+        recurse: yes
+
+      
+    - name: Install Python
+      become: true
+      apt:
+        name: python3
+        state: present
+
+      
+    - name: Активувати віртуальне оточення
+      shell: "/bin/bash -c 'source ~taiga/taiga-back/.venv/bin/activate'"
+      become_user: taiga
+      become: true
+      
+    - name: Застосувати міграції
+      shell: "/bin/bash -c 'DJANGO_SETTINGS_MODULE=settings.config python manage.py migrate --noinput'"
+      become_user: taiga
+      become: true
+      
+    - name: Створити суперкористувача
+      shell: "/bin/bash -c 'CELERY_ENABLED=False DJANGO_SETTINGS_MODULE=settings.config python manage.py createsuperuser'"
+      become_user: taiga
+      become: true
+      
+    - name: Завантажити початкові шаблони проектів
+      shell: "/bin/bash -c  'DJANGO_SETTINGS_MODULE=settings.config python manage.py loaddata initial_project_templates'"
+      become_user: taiga
+      become: true
+      
+    - name: Скомпілювати повідомлення
+      shell: "/bin/bash -c 'DJANGO_SETTINGS_MODULE=settings.config python manage.py compilemessages'"
+      become_user: taiga
+      become: true
+      
+    - name: Зібрати статичні файли
+      shell: "/bin/bash -c 'DJANGO_SETTINGS_MODULE=settings.config python manage.py collectstatic --noinput'"
+      become_user: taiga
+      become: true
+      
+    - name: Завантажити прикладні дані (для демонстрації)
+      shell: "/bin/bash -c 'CELERY_ENABLED=False DJANGO_SETTINGS_MODULE=settings.config python manage.py sample_data'"
+      become_user: taiga
+      become: true
+      
+    - name: Запустити сервер розробки
+      shell: "/bin/bash -c 'source ~taiga/taiga-back/.venv/bin/activate && (taiga-back) DJANGO_SETTINGS_MODULE=settings.config python manage.py runserver'"
+      become_user: taiga
+      become: true
+

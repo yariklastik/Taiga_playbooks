@@ -1,0 +1,154 @@
+---
+- name: Install and configure Taiga-Front
+  hosts: front
+  become: true
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required system packages
+      apt:
+        name:
+          - build-essential
+          - binutils-doc
+          - autoconf
+          - flex
+          - bison
+          - libjpeg-dev
+          - libfreetype6-dev
+          - zlib1g-dev
+          - libzmq3-dev
+          - libgdbm-dev
+          - libncurses5-dev
+          - automake
+          - libtool
+          - curl
+          - git
+          - tmux
+          - gettext
+          - nginx
+          - rabbitmq-server
+          - python3
+          - python3-pip
+          - python3-dev
+          - python3-venv
+          - libxml2-dev
+          - libxslt-dev
+          - libssl-dev
+          - libffi-dev
+          - nodejs
+        state: present
+  
+    - name: Get the code
+      git:
+        repo: https://github.com/kaleidos-ventures/taiga-front-dist.git
+        dest: /home/taiga-front-dist
+        version: stable
+
+    - name: Create a settings file
+      shell: |
+        cd /home/taiga-front-dist
+        cp /home/taiga-front-dist/dist/conf.example.json /home/taiga-front-dist/dist/conf.json
+      become: true
+
+    - name: Edit the config file
+      blockinfile:
+        path: /home/taiga-front-dist/dist/conf.json
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+          loop:
+            - { regexp: '^"api": "https://taiga.mycompany.com/api/v1/",', line: '"api": "https://192.168.1.11/api/v1/",' }
+            - { regexp: '^"eventsUrl": null,', line: '"api": "https://192.168.1.12/api/v1/",' }
+
+
+- name: Install and configure Taiga-Events
+  hosts: front
+  become: true
+  
+  vars:
+    rabbitmq_url: "amqp://rabbitmquser:rabbitmqpassword@rabbitmqhost:5672/taiga"
+
+
+  tasks:
+    - name: Run curl command
+      command: curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+
+    - name: Install Node.js
+      apt:
+        name: nodejs
+        state: present
+        
+    - name: Get the code
+      git:
+        repo: https://github.com/kaleidos-ventures/taiga-events.git
+        dest: /home/taiga-events
+        version: stable
+
+    - name: Install JavaScript dependencies
+      command: npm install
+      args:
+        chdir: /home/taiga-events
+
+    - name: Create a settings file
+      shell: |
+        cd /home/taiga-events
+        cp .env.example .env
+      vars:
+        rabbitmq_url: "{{ rabbitmq_url }}"
+        secret_key: "123"
+      become: true
+
+    - name: Update the .env file
+      lineinfile:
+        path: /home/taiga-events/.env
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^RABBITMQ_URL.*', line: 'RABBITMQ_URL="{{ rabbitmq_url }}"' }
+        - { regexp: '^SECRET.*', line: 'SECRET="{{ 123 }}"' }
+        - { regexp: '^WEB_SOCKET_SERVER_PORT.*', line: 'WEB_SOCKET_SERVER_PORT=8888' }
+        - { regexp: '^APP_PORT.*', line: 'APP_PORT=3023' }
+
+- name: Install and configure Taiga-Protected
+  hosts: front
+  become: true
+
+  tasks:
+    - name: Get the code
+      git:
+        repo: https://github.com/kaleidos-ventures/taiga-protected.git
+        dest: /home/taiga-protected
+        version: stable
+
+    - name: Create a virtualenv
+      command: python3 -m venv /home/taiga-protected/.venv --prompt taiga-protected
+
+    - name: Activate the virtualenv
+      shell: "/bin/bash -c 'source /home/taiga-protected/.venv/bin/activate'"
+
+    - name: Upgrade pip and wheel
+      pip:
+        name: pip
+        extra_args: --upgrade
+
+    - name: Install Python dependencies
+      pip:
+        requirements: /home/taiga-protected/requirements.txt
+
+    - name: Create a settings file
+      shell: |
+        cd /home/taiga-protected
+        cp /home/taiga-protected/env.sample /home/taiga-protected/.env
+      become: true
+
+    - name: Update the .env file
+      lineinfile:
+        path: /home/taiga-protected/.env
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^MAX_AGE.*', line: 'MAX_AGE=360' }
+        - { regexp: '^SECRET_KEY.*', line: 'SECRET_KEY="123"' }
+        - { regexp: '^TAIGA_SUBPATH.*', line: 'TAIGA_SUBPATH=""' }

@@ -1,0 +1,20 @@
+---
+- name: Execute commands and restart services
+  hosts: front
+  become: true
+  tasks:
+    - name: Verify NGINX configuration
+      command: sudo nginx -t
+      register: nginx_output
+      changed_when: false
+
+    - name: Restart NGINX service
+      systemd:
+        name: nginx
+        state: restarted
+      when: nginx_output.stdout | search('successful')
+
+    - name: Restart Taiga services
+      command: sudo systemctl restart 'taiga*'
+      changed_when: false
+

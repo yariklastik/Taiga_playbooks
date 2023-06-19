@@ -1,0 +1,102 @@
+---
+- hosts: database_server
+  become: true
+
+  vars_files:
+    - vars.yaml
+
+  pre_tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        
+    - name: "Install packages"
+      apt : "name={{ item }} state=present"
+      with_items:
+        - python3-psycopg2
+        
+    - name: Create the file repository configuration
+      lineinfile:
+        dest: /etc/apt/sources.list.d/pgdg.list
+        line: 'deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main'
+        create: yes
+
+    - name: Import the repository signing key
+      apt_key:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        state: present
+        
+    - name: Install PostgreSQL
+      apt:
+        name: postgresql-12
+        state: latest
+        update_cache: yes
+
+
+  tasks:
+    - name: "Find out if PostgreSQL is initialized"
+      ansible.builtin.stat:
+        path: "/var/lib/pgsql/data/pg_hba.conf"
+      register: postgres_data
+ 
+    - name: "Start and enable services"
+      service: "name={{ item }} state=started enabled=yes"
+      with_items:
+        - postgresql
+
+    - name: "Create app database"
+      postgresql_db:
+        state: present
+        name: "{{ db_name }}"
+      become: yes
+      become_user: postgres
+
+    - name: "Create db user"
+      postgresql_user:
+        state: present
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+      become: yes
+      become_user: postgres
+
+    - name: "Grant db user access to app db"
+      postgresql_privs:
+        type: database
+        database: "{{ db_name }}"
+        roles: "{{ db_user }}"
+        grant_option: no
+        privs: all
+      become: yes
+      become_user: postgres
+
+    - name: "Allow md5 connection for the db user"
+      postgresql_pg_hba:
+        dest: "/etc/postgresql/12/main/pg_hba.conf"
+        contype: host
+        databases: all
+        method: md5
+        users: "{{ db_user }}"
+        create: true
+      become: yes
+      become_user: postgres
+      notify: restart postgres
+      
+    - name: Configure settings file
+      lineinfile:
+        path: /etc/postgresql/12/main/postgresql.conf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      with_items:
+        - { regexp: "^#listen_addresses = 'localhost'         # what IP address(es) to listen on;", line: "listen_addresses = '*'         # what IP address(es) to listen on;" }
+        
+    - name: Configure settings file
+      lineinfile:
+        path: /etc/postgresql/12/main/pg_hba.conf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      with_items:
+        - { regexp: "^host    taiga    taiga    192.168.1.35/32    trust", line: "host    taiga    taiga    192.168.1.11/24    trust" }
+
+  handlers:
+    - name: restart postgres
+      service: name=postgresql state=restarted 

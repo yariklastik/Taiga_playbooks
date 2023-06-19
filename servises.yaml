@@ -1,0 +1,132 @@
+---
+- name: Configure Taiga systemd services
+  hosts: backend
+  become: yes
+
+  tasks:
+    - name: Create taiga-back systemd service
+      copy:
+        dest: /etc/systemd/system/taiga.service
+        content: |
+          [Unit]
+          Description=taiga_back
+          After=network.target
+
+          [Service]
+          User=taiga
+          WorkingDirectory=/home/taiga/taiga-back
+          ExecStart=/home/taiga/taiga-back/.venv/bin/gunicorn --workers 4 --timeout 60 --log-level=info --access-logfile - --bind 0.0.0.0:8001 taiga.wsgi
+          Restart=always
+          RestartSec=3
+
+          Environment=PYTHONUNBUFFERED=true
+          Environment=DJANGO_SETTINGS_MODULE=settings.config
+
+          [Install]
+          WantedBy=default.target
+
+    - name: Reload systemd daemon for taiga-back
+      systemd:
+        daemon_reload: yes
+
+    - name: Start taiga-back service
+      systemd:
+        name: taiga
+        state: started
+        enabled: yes
+        
+    - name: Create taiga-async systemd service
+      copy:
+        dest: /etc/systemd/system/taiga-async.service
+        content: |
+          [Unit]
+          Description=taiga_async
+          After=network.target
+
+          [Service]
+          User=taiga
+          WorkingDirectory=/home/taiga/taiga-back
+          ExecStart=/home/taiga/taiga-back/.venv/bin/celery -A taiga.celery worker -B --concurrency 4 -l INFO
+          Restart=always
+          RestartSec=3
+          ExecStop=/bin/kill -s TERM $MAINPID
+
+          Environment=PYTHONUNBUFFERED=true
+          Environment=DJANGO_SETTINGS_MODULE=settings.config
+
+          [Install]
+          WantedBy=default.target
+
+    - name: Reload systemd daemon for taiga-async
+      systemd:
+        daemon_reload: yes
+
+    - name: Start taiga-async service
+      systemd:
+        name: taiga-async
+        state: started
+        enabled: yes
+        
+- name: Configure Taiga systemd services
+  hosts: front
+  become: yes
+
+  tasks:
+
+    - name: Create taiga-events systemd service
+      copy:
+        dest: /etc/systemd/system/taiga-events.service
+        content: |
+          [Unit]
+          Description=taiga_events
+          After=network.target
+
+          [Service]
+          User=taiga
+          WorkingDirectory=/home/taiga-events
+          ExecStart=npm run start:production
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=default.target
+
+    - name: Reload systemd daemon for taiga-events
+      systemd:
+        daemon_reload: yes
+
+    - name: Start taiga-events service
+      systemd:
+        name: taiga-events
+        state: started
+        enabled: yes
+
+    - name: Create taiga-protected systemd service
+      copy:
+        dest: /etc/systemd/system/taiga-protected.service
+        content: |
+          [Unit]
+          Description=taiga_protected
+          After=network.target
+
+          [Service]
+          User=taiga
+          WorkingDirectory=/home/taiga-protected
+          ExecStart=/home/taiga-protected/.venv/bin/gunicorn --workers 4 --timeout 60 --log-level=info --access-logfile - --bind 0.0.0.0:8003 server:app
+          Restart=always
+          RestartSec=3
+
+          Environment=PYTHONUNBUFFERED=true
+
+          [Install]
+          WantedBy=default.target
+
+    - name: Reload systemd daemon for taiga-protected
+      systemd:
+        daemon_reload: yes
+
+    - name: Start taiga-protected service
+      systemd:
+        name: taiga-protected
+        state: started
+        enabled: yes

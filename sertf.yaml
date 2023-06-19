@@ -1,0 +1,26 @@
+---
+- name: Створення SSL сертифіката та ключа
+  hosts: front
+  gather_facts: false
+
+  tasks:
+    - name: Генерація SSL ключа
+      openssl_privatekey:
+        path: /tmp/mytrap.key
+        size: 2048
+
+    - name: Генерація SSL сертифіката
+      openssl_csr:
+        path: /tmp/mytrap.csr
+        privatekey_path: /tmp/mytrap.key
+        common_name: mytrap.example.com
+        state: present
+
+    - name: Підпис SSL сертифіката
+      openssl_certificate:
+        path: /tmp/mytrap.crt
+        csr_path: /tmp/mytrap.csr
+        privatekey_path: /tmp/mytrap.key
+        provider: selfsigned
+        state: present
+
