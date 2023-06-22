@@ -82,7 +82,7 @@
           After=network.target
 
           [Service]
-          User=taiga
+          User=vagrant
           WorkingDirectory=/home/taiga-events
           ExecStart=npm run start:production
           Restart=always
