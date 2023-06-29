@@ -18,17 +18,16 @@
       copy:
         content: |
           server {
-              listen 80 ssl;
-              server_name 192.168.1.23;
+              listen 443 ssl;
+              server_name 192.168.1.11;
               return 301 https://$server_name$request_uri;
-                  ssl_certificate     /tmp/mytrap.crt;
-                  ssl_certificate_key /tmp/mytrap.key;
-
+              ssl_certificate     /tmp/mytrap.crt;
+              ssl_certificate_key /tmp/mytrap.key;
           }
 
           server {
-              listen 443 ssl;
-              server_name 192.168.1.23;
+              listen 80;
+              server_name 192.168.1.11;
               server_tokens off;
               
               ssl_certificate     /tmp/mytrap.crt;
@@ -58,7 +57,7 @@
                   proxy_set_header X-Scheme $scheme;
                   proxy_set_header X-Forwarded-Proto $scheme;
                   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_pass http://192.168.1.29:8001/api/;
+                  proxy_pass http://192.168.1.10:8001/api/;
                   proxy_redirect off;
               }
 
@@ -68,12 +67,12 @@
                   proxy_set_header X-Scheme $scheme;
                   proxy_set_header X-Forwarded-Proto $scheme;
                   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_pass http://192.168.1.29:8001/admin/;
+                  proxy_pass http://192.168.1.10:8001/admin/;
                   proxy_redirect off;
               }
 
               location /static/ {
-                  proxy_pass http://192.168.1.29:80;
+                  proxy_pass http://192.168.1.10:80;
                   proxy_set_header Host $host;
                   proxy_set_header X-Real-IP $remote_addr;
                   proxy_set_header X-Forwarded-Proto $scheme;
@@ -81,7 +80,7 @@
 
 
              location /_protected/ {
-                 proxy_pass http://192.168.1.29:80;
+                 proxy_pass http://192.168.1.10:80;
                  proxy_set_header Host $host;
                  proxy_set_header X-Real-IP $remote_addr;
                  proxy_set_header X-Forwarded-Proto $scheme;
@@ -89,7 +88,7 @@
               }
 
              location /media/exports/ {
-                 proxy_pass http://192.168.1.29:80;
+                 proxy_pass http://192.168.1.10:80;
                  proxy_set_header Host $host;
                  proxy_set_header X-Real-IP $remote_addr;
                  proxy_set_header X-Forwarded-Proto $scheme;
@@ -102,7 +101,7 @@
                   proxy_set_header X-Scheme $scheme;
                   proxy_set_header X-Forwarded-Proto $scheme;
                   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_pass http://192.168.1.29:8003/;
+                  proxy_pass http://192.168.1.10:8003/;
                   proxy_redirect off;
               }
 
@@ -113,7 +112,7 @@
                   proxy_connect_timeout 7d;
                   proxy_send_timeout 7d;
                   proxy_read_timeout 7d;
-                  proxy_pass http://192.168.1.30/events;
+                  proxy_pass http://192.168.1.11/events;
               }
           }
         dest: /etc/nginx/conf.d/taiga.conf
